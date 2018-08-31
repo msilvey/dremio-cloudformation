@@ -15,3 +15,4 @@ Open a web browser, login to your AWS account and navigate to:
 - Click 'Create Stack' and select 'Upload a template to Amazon S3', then click 'Browse' and navigate to the JSON template file.
 - Click 'Next', give your stack a name, select a key, click 'Next'.
 - Click on 'I acknowledge that AWS CloudFormation might create IAM resources.' then click 'Next' again and off you go.
+- On completion, there will be a link to the UI in the 'Outputs' section of your CFN Stack.
