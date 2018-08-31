@@ -1,0 +1,561 @@
+{
+    "Mappings": {
+        "RegionMap": {
+            "us-east-1": {
+                "AMI": "ami-05fb04e2687120d6b"
+            },
+            "us-east-2": {
+                "AMI": "ami-087868e91f1a665d1"
+            },
+            "us-west-1": {
+                "AMI": "ami-0ec3e3a838330c61f"
+            },
+            "us-west-2": {
+                "AMI": "ami-09eb876a926ae86db"
+            }
+        }
+    },
+    "Outputs": {
+        "URL": {
+            "Description": "Dremio Install URL",
+            "Value": {
+                "Fn::Join": [
+                    "",
+                    [
+                        "http://",
+                        {
+                            "Fn::GetAtt": [
+                                "DremioTest",
+                                "PublicIp"
+                            ]
+                        },
+                        ":9047/"
+                    ]
+                ]
+            }
+        }
+    },
+    "Parameters": {
+        "AllowAccessFrom": {
+            "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+            "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x.",
+            "Default": "0.0.0.0/0",
+            "Description": " The IP address range that can be used to SSH to the EC2 instances",
+            "MaxLength": "18",
+            "MinLength": "9",
+            "Type": "String"
+        },
+        "InstanceType": {
+            "AllowedValues": [
+                "m5.xlarge",
+                "m5.2xlarge",
+                "m5.4xlarge"
+            ],
+            "Default": "m5.xlarge",
+            "Description": "Type of instance to use for this node.",
+            "Type": "String"
+        },
+        "KeyName": {
+            "Description": "Name of your EC2 KeyPair",
+            "Type": "AWS::EC2::KeyPair::KeyName"
+        }
+    },
+    "Resources": {
+        "DremioTest": {
+            "Metadata": {
+                "AWS::CloudFormation::Init": {
+                    "config": {
+                        "commands": {
+                            "01_ensure_java_version": {
+                                "command": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "sudo update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/bin/java 1201",
+                                            "\n"
+                                        ]
+                                    ]
+                                }
+                            },
+                            "02_prep_directories": {
+                                "command": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "sudo mkdir /opt/dremio",
+                                            "\n",
+                                            "sudo mkdir /var/run/dremio && sudo chown dremio:dremio /var/run/dremio",
+                                            "\n",
+                                            "sudo mkdir /var/log/dremio && sudo chown dremio:dremio /var/log/dremio",
+                                            "\n",
+                                            "sudo mkdir /var/lib/dremio && sudo chown dremio:dremio /var/lib/dremio",
+                                            "\n"
+                                        ]
+                                    ]
+                                }
+                            },
+                            "03_install_maven": {
+                                "command": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "sudo mv apache-maven-3.5.4 apache-maven",
+                                            "\n",
+                                            "sudo update-alternatives --install /usr/bin/mvn maven /opt/apache-maven/bin/mvn 1001",
+                                            "\n"
+                                        ]
+                                    ]
+                                },
+                                "cwd": "/opt"
+                            },
+                            "04_download_dremio_src": {
+                                "command": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "sudo git clone https://github.com/dremio/dremio-oss.git /opt/dremio-src",
+                                            "\n"
+                                        ]
+                                    ]
+                                }
+                            },
+                            "05_install_dremio_oss": {
+                                "command": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "sudo git checkout 0f16b3cef91ae1aeeef743499d8ac30ec9de06c0",
+                                            "\n",
+                                            "sudo mvn clean install -DskipTests -Ddremio.oss-only=true",
+                                            "\n",
+                                            "sudo cp -a distribution/server/target/dremio-oss-2*/dremio-oss-2*/* /opt/dremio/",
+                                            "\n",
+                                            "chown -R dremio:dremio /opt/dremio",
+                                            "\n"
+                                        ]
+                                    ]
+                                },
+                                "cwd": "/opt/dremio-src"
+                            },
+                            "06_setup_dremio_service": {
+                                "command": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "sudo cp /opt/dremio/share/dremio.service /etc/systemd/system/dremio.service",
+                                            "\n",
+                                            "sudo systemctl daemon-reload",
+                                            "\n",
+                                            "sudo systemctl enable dremio",
+                                            "\n",
+                                            "sudo systemctl start dremio",
+                                            "\n"
+                                        ]
+                                    ]
+                                }
+                            }
+                        },
+                        "files": {
+                            "/etc/cfn/cfn-hup.conf": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "[main]\n",
+                                            "stack=",
+                                            {
+                                                "Ref": "AWS::StackId"
+                                            },
+                                            "\n",
+                                            "region=",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "\n"
+                                        ]
+                                    ]
+                                },
+                                "group": "root",
+                                "mode": "000400",
+                                "owner": "root"
+                            },
+                            "/etc/cfn/hooks.d/cfn-auto-reloader.conf": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "[cfn-auto-reloader-hook]\n",
+                                            "triggers=posdremio_tmpl.update\n",
+                                            "path=Resources.DremioTest",
+                                            ".Metadata.AWS::CloudFormation::Init\n",
+                                            "action=/opt/aws/bin/cfn-init -v ",
+                                            "         --stack ",
+                                            {
+                                                "Ref": "AWS::StackName"
+                                            },
+                                            "         --resource DremioTest",
+                                            "         --region ",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "\n",
+                                            "runas=root",
+                                            "\n"
+                                        ]
+                                    ]
+                                },
+                                "group": "root",
+                                "mode": "000600",
+                                "owner": "root"
+                            }
+                        },
+                        "packages": {
+                            "apt": {
+                                "curl": [],
+                                "git": [],
+                                "openjdk-8-jdk": []
+                            }
+                        },
+                        "services": {
+                            "cfn-hup": {
+                                "enabled": "true",
+                                "ensureRunning": "true",
+                                "files": [
+                                    "/etc/cfn/cfn-hup.conf",
+                                    "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+                                ]
+                            }
+                        },
+                        "sources": {
+                            "/opt": "http://apache.mirrors.tds.net/maven/maven-3/3.5.4/binaries/apache-maven-3.5.4-bin.tar.gz"
+                        },
+                        "users": {
+                            "dremio": {
+                                "uid": 6000
+                            }
+                        }
+                    }
+                }
+            },
+            "Properties": {
+                "BlockDeviceMappings": [
+                    {
+                        "DeviceName": "/dev/sda1",
+                        "Ebs": {
+                            "VolumeSize": 128
+                        }
+                    }
+                ],
+                "IamInstanceProfile": {
+                    "Ref": "DremioTestProfile"
+                },
+                "ImageId": {
+                    "Fn::FindInMap": [
+                        "RegionMap",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        "AMI"
+                    ]
+                },
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "NetworkInterfaces": [
+                    {
+                        "DeviceIndex": "0",
+                        "NetworkInterfaceId": {
+                            "Ref": "Eth0"
+                        }
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "DremioTest"
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash -xe\n",
+                                "set -o errexit; set -o nounset; set -o pipefail",
+                                "\n",
+                                "apt-get update",
+                                "\n",
+                                "apt-get -y install python-pip",
+                                "\n",
+                                "pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz",
+                                "\n",
+                                "cp /usr/local/init/ubuntu/cfn-hup /etc/init.d/cfn-hup",
+                                "\n",
+                                "chmod +x /etc/init.d/cfn-hup",
+                                "\n",
+                                "update-rc.d cfn-hup defaults",
+                                "\n",
+                                "service cfn-hup start",
+                                "\n",
+                                "/usr/local/bin/cfn-init -v ",
+                                " --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                " --resource DremioTest",
+                                " --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n",
+                                "/usr/local/bin/cfn-signal -e $? ",
+                                " --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                " --resource DremioTest",
+                                " --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n"
+                            ]
+                        ]
+                    }
+                }
+            },
+            "Type": "AWS::EC2::Instance"
+        },
+        "DremioTestAttachGateway": {
+            "Properties": {
+                "InternetGatewayId": {
+                    "Ref": "DremioTestInternetGateway"
+                },
+                "VpcId": {
+                    "Ref": "DremioTestVPC"
+                }
+            },
+            "Type": "AWS::EC2::VPCGatewayAttachment"
+        },
+        "DremioTestIAMRole": {
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "ec2.amazonaws.com"
+                                ]
+                            }
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "logs:CreateLogGroup",
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents",
+                                        "logs:DescribeLogStreams"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": "arn:aws:logs:*:*:*"
+                                },
+                                {
+                                    "Action": [
+                                        "ssm:UpdateInstanceInformation"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": "arn:aws:ec2:*:*:*"
+                                }
+                            ],
+                            "Version": "2012-10-17"
+                        },
+                        "PolicyName": "DremioTestPolicy"
+                    }
+                ]
+            },
+            "Type": "AWS::IAM::Role"
+        },
+        "DremioTestInternetGateway": {
+            "Properties": {
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ]
+            },
+            "Type": "AWS::EC2::InternetGateway"
+        },
+        "DremioTestProfile": {
+            "Properties": {
+                "Path": "/",
+                "Roles": [
+                    {
+                        "Ref": "DremioTestIAMRole"
+                    }
+                ]
+            },
+            "Type": "AWS::IAM::InstanceProfile"
+        },
+        "DremioTestRoute": {
+            "DependsOn": "DremioTestAttachGateway",
+            "Properties": {
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "DremioTestInternetGateway"
+                },
+                "RouteTableId": {
+                    "Ref": "DremioTestRouteTable"
+                }
+            },
+            "Type": "AWS::EC2::Route"
+        },
+        "DremioTestRouteTable": {
+            "Properties": {
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ],
+                "VpcId": {
+                    "Ref": "DremioTestVPC"
+                }
+            },
+            "Type": "AWS::EC2::RouteTable"
+        },
+        "DremioTestSG": {
+            "Properties": {
+                "GroupDescription": "Enable HTTP to Dremio and SSH access",
+                "SecurityGroupIngress": [
+                    {
+                        "CidrIp": {
+                            "Ref": "AllowAccessFrom"
+                        },
+                        "FromPort": "22",
+                        "IpProtocol": "tcp",
+                        "ToPort": "22"
+                    },
+                    {
+                        "CidrIp": {
+                            "Ref": "AllowAccessFrom"
+                        },
+                        "FromPort": "9047",
+                        "IpProtocol": "tcp",
+                        "ToPort": "9047"
+                    }
+                ],
+                "VpcId": {
+                    "Ref": "DremioTestVPC"
+                }
+            },
+            "Type": "AWS::EC2::SecurityGroup"
+        },
+        "DremioTestSubnet": {
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::Join": [
+                        "",
+                        [
+                            {
+                                "Ref": "AWS::Region"
+                            },
+                            "c"
+                        ]
+                    ]
+                },
+                "CidrBlock": "10.0.0.0/24",
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ],
+                "VpcId": {
+                    "Ref": "DremioTestVPC"
+                }
+            },
+            "Type": "AWS::EC2::Subnet"
+        },
+        "DremioTestSubnetRouteTableAssociation": {
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "DremioTestRouteTable"
+                },
+                "SubnetId": {
+                    "Ref": "DremioTestSubnet"
+                }
+            },
+            "Type": "AWS::EC2::SubnetRouteTableAssociation"
+        },
+        "DremioTestVPC": {
+            "Properties": {
+                "CidrBlock": "10.0.0.0/16",
+                "Tags": [
+                    {
+                        "Key": "Application",
+                        "Value": {
+                            "Ref": "AWS::StackId"
+                        }
+                    }
+                ]
+            },
+            "Type": "AWS::EC2::VPC"
+        },
+        "Eth0": {
+            "Properties": {
+                "Description": "eth0",
+                "GroupSet": [
+                    {
+                        "Ref": "DremioTestSG"
+                    }
+                ],
+                "SourceDestCheck": "true",
+                "SubnetId": {
+                    "Ref": "DremioTestSubnet"
+                },
+                "Tags": [
+                    {
+                        "Key": "Interface",
+                        "Value": "eth0"
+                    },
+                    {
+                        "Key": "Name",
+                        "Value": "Int 0"
+                    }
+                ]
+            },
+            "Type": "AWS::EC2::NetworkInterface"
+        },
+        "IPAddress": {
+            "DependsOn": "DremioTestAttachGateway",
+            "Properties": {
+                "Domain": "vpc",
+                "InstanceId": {
+                    "Ref": "DremioTest"
+                }
+            },
+            "Type": "AWS::EC2::EIP"
+        }
+    }
+}
