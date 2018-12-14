@@ -131,7 +131,7 @@
                                     "Fn::Join": [
                                         "",
                                         [
-                                            "sudo git checkout 2d6c736b94fa0f451cab196db1f0710a7586742f",
+                                            "sudo git checkout d4c98e76e29d84e13508f6802df4acc5e38b1008",
                                             "\n",
                                             "sudo mvn clean install -DskipTests -Ddremio.oss-only=true",
                                             "\n",
